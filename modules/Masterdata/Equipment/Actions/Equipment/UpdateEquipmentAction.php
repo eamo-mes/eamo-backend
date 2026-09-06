@@ -8,51 +8,34 @@ use Illuminate\Http\JsonResponse;
 use Lorisleiva\Actions\Concerns\AsAction;
 use Modules\Masterdata\Equipment\Models\Equipment;
 use Modules\Masterdata\Equipment\Requests\Equipment\UpdateEquipmentRequest;
-use Modules\Masterdata\Equipment\Services\SyncEquipmentErrorsService;
-use Modules\Masterdata\Equipment\Services\SyncEquipmentImagesService;
-use Modules\Masterdata\Equipment\Services\SyncEquipmentParametersService;
-use Modules\Masterdata\Equipment\Services\SyncEquipmentStateService;
+use Modules\Masterdata\Equipment\Services\UpdateEquipmentService;
 
 final class UpdateEquipmentAction
 {
     use AsAction;
 
-    public function asController(
-        UpdateEquipmentRequest $request,
-        string $id,
-        SyncEquipmentStateService $stateService,
-        SyncEquipmentImagesService $imagesService,
-        SyncEquipmentErrorsService $errorsService,
-        SyncEquipmentParametersService $parametersService
-    ): JsonResponse {
+    public function __construct(
+        private readonly UpdateEquipmentService $service
+    ) {}
+
+    public function asController(UpdateEquipmentRequest $request, string $id): JsonResponse
+    {
         $equipment = Equipment::findOrFail($id);
 
-        $data = $request->validated();
-        $equipmentData = array_diff_key($data, array_flip(['equipment_parameters', 'state', 'uploaded_images', 'existing_image_ids']));
-
-        $equipment->update($equipmentData);
-
-        if ($request->has('state') && $request->filled('state')) {
-            $stateService->set($equipment, $request->input('state'));
-        }
-
-        if ($request->has('existing_image_ids') || $request->hasFile('uploaded_images')) {
-            $existingImageIds = $request->input('existing_image_ids', []);
-            $newFiles = $request->file('uploaded_images', []);
-            $imagesService->sync($equipment, $existingImageIds, $newFiles);
-        }
-
-        if ($request->has('equipment_error_ids')) {
-            $errorsService->sync($equipment, $request->input('equipment_error_ids') ?? []);
-        }
-
-        if ($request->has('equipment_parameters')) {
-            $parametersService->sync($equipment, $request->input('equipment_parameters') ?? []);
-        }
-
-        return response()->json(
-            $equipment->load(['equipmentCategory', 'equipmentErrors', 'equipmentParameters.unit', 'equipmentState', 'equipmentImages'])
+        $updated = $this->service->update(
+            $equipment,
+            $request->validated(),
+            $request->has('state') ? $request->input('state') : null,
+            $request->input('existing_image_ids', []),
+            $request->file('uploaded_images', []),
+            $request->has('equipment_error_ids') ? ($request->input('equipment_error_ids') ?? []) : null,
+            $request->has('equipment_parameters') ? ($request->input('equipment_parameters') ?? []) : null
         );
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $updated,
+        ]);
     }
 }
 

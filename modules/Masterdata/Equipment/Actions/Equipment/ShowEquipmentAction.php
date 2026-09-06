@@ -8,38 +8,29 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Lorisleiva\Actions\Concerns\AsAction;
 use Modules\Masterdata\Equipment\Models\Equipment;
+use Modules\Masterdata\Equipment\Services\FindEquipmentService;
 
 final class ShowEquipmentAction
 {
     use AsAction;
 
+    public function __construct(
+        private readonly FindEquipmentService $service
+    ) {}
+
     public function asController(Request $request, string $id): JsonResponse
     {
-        $relations = [
-            'equipmentCategory',
-            'equipmentParameters.unit',
-            'equipmentErrors',
-            'equipmentState',
-            'equipmentImages',
-        ];
+        $equipment = $this->service->find(
+            $id,
+            $request->boolean('include_children'),
+            $request->boolean('include_parent'),
+            $request->boolean('only_trashed'),
+            $request->boolean('with_trashed')
+        );
 
-        if ($request->boolean('include_children')) {
-            $relations[] = 'children';
-        }
-
-        if ($request->boolean('include_parent')) {
-            $relations[] = 'parent';
-        }
-
-        $query = Equipment::with($relations);
-        if ($request->boolean('only_trashed')) {
-            $query->onlyTrashed();
-        } elseif ($request->boolean('with_trashed')) {
-            $query->withTrashed();
-        }
-
-        $equipment = $query->findOrFail($id);
-
-        return response()->json($equipment);
+        return response()->json([
+            'status' => 'success',
+            'data' => $equipment,
+        ]);
     }
 }

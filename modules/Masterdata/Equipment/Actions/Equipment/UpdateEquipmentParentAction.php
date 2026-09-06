@@ -8,42 +8,24 @@ use Illuminate\Http\JsonResponse;
 use Lorisleiva\Actions\Concerns\AsAction;
 use Modules\Masterdata\Equipment\Models\Equipment;
 use Modules\Masterdata\Equipment\Requests\Equipment\UpdateEquipmentParentRequest;
+use Modules\Masterdata\Equipment\Services\UpdateEquipmentParentService;
 
 final class UpdateEquipmentParentAction
 {
     use AsAction;
 
-    /**
-     * Update the parent_id of the specified equipment.
-     */
+    public function __construct(
+        private readonly UpdateEquipmentParentService $service
+    ) {}
+
     public function asController(UpdateEquipmentParentRequest $request, string $id): JsonResponse
     {
         $equipment = Equipment::findOrFail($id);
-        $data = $request->validated();
+        $updated = $this->service->updateParent($equipment, $request->validated('parent_id'));
 
-        $parentId = $data['parent_id'];
-
-        if ($parentId !== null) {
-            $parent = Equipment::find($parentId);
-            $ancestor = $parent;
-
-            while ($ancestor !== null) {
-                if ($ancestor->id === $id) {
-                    return response()->json([
-                        'message' => __('equipment.parent_circular_reference'),
-                        'errors' => [
-                            'parent_id' => [__('equipment.parent_circular_reference_error')],
-                        ],
-                    ], 422);
-                }
-                $ancestor = $ancestor->parent;
-            }
-        }
-
-        $equipment->update([
-            'parent_id' => $parentId,
+        return response()->json([
+            'status' => 'success',
+            'data' => $updated,
         ]);
-
-        return response()->json($equipment->load(['equipmentCategory', 'equipmentState', 'parent']));
     }
 }

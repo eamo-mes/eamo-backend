@@ -18,14 +18,28 @@ final class StoreEquipmentAction
 {
     use AsAction;
 
-    public function asController(
-        StoreEquipmentRequest $request,
-        SyncEquipmentStateService $stateService,
-        SyncEquipmentImagesService $imagesService,
-        SyncEquipmentErrorsService $errorsService,
-        SyncEquipmentParametersService $parametersService
-    ): JsonResponse {
-        $data = $request->validated();
+    public function __construct(
+        private readonly SyncEquipmentStateService $stateService,
+        private readonly SyncEquipmentImagesService $imagesService,
+        private readonly SyncEquipmentErrorsService $errorsService,
+        private readonly SyncEquipmentParametersService $parametersService
+    ) {}
+
+    /**
+     * Store a new equipment record with associated state, images, errors, and parameters.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<int, mixed>  $uploadedImages
+     * @param  array<int, string>  $equipmentErrorIds
+     * @param  array<int, mixed>  $equipmentParameters
+     */
+    public function handle(
+        array $data,
+        ?string $state = null,
+        array $uploadedImages = [],
+        array $equipmentErrorIds = [],
+        array $equipmentParameters = []
+    ): Equipment {
         $equipmentData = array_diff_key($data, array_flip(['equipment_parameters', 'state', 'uploaded_images']));
 
         $equipmentData['last_maintenance'] = [
@@ -34,26 +48,45 @@ final class StoreEquipmentAction
 
         $equipment = RegisterDeviceWithQrAction::run($equipmentData);
 
-        if ($request->has('state') && $request->filled('state')) {
-            $stateService->create($equipment, $request->input('state'));
+        if (! empty($state)) {
+            $this->stateService->create($equipment, $state);
         }
 
-        if ($request->hasFile('uploaded_images')) {
-            $imagesService->uploadImages($equipment, $request->file('uploaded_images'));
+        if (! empty($uploadedImages)) {
+            $this->imagesService->uploadImages($equipment, $uploadedImages);
         }
 
-        if ($request->has('equipment_error_ids')) {
-            $errorsService->sync($equipment, $request->input('equipment_error_ids') ?? []);
+        if (! empty($equipmentErrorIds)) {
+            $this->errorsService->sync($equipment, $equipmentErrorIds);
         }
 
-        if ($request->has('equipment_parameters')) {
-            $parametersService->create($equipment, $request->input('equipment_parameters') ?? []);
+        if (! empty($equipmentParameters)) {
+            $this->parametersService->create($equipment, $equipmentParameters);
         }
 
-        return response()->json(
-            $equipment->load(['equipmentCategory', 'equipmentErrors', 'equipmentParameters.unit', 'equipmentState', 'equipmentImages']),
-            201
+        return $equipment->load([
+            'equipmentCategory',
+            'equipmentErrors',
+            'equipmentParameters.unit',
+            'equipmentState',
+            'equipmentImages',
+        ]);
+    }
+
+    public function asController(StoreEquipmentRequest $request): JsonResponse
+    {
+        $equipment = $this->handle(
+            $request->validated(),
+            $request->input('state'),
+            $request->file('uploaded_images', []),
+            $request->input('equipment_error_ids', []),
+            $request->input('equipment_parameters', [])
         );
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $equipment,
+        ], 201);
     }
 }
 

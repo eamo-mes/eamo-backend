@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Lorisleiva\Actions\Concerns\AsAction;
 use Modules\Masterdata\Equipment\Models\Equipment;
+use Modules\Masterdata\Equipment\Services\DeleteEquipmentService;
 
 final class DeleteEquipmentAction
 {
@@ -18,9 +19,11 @@ final class DeleteEquipmentAction
     {
         $equipment = Equipment::findOrFail($id);
         Gate::authorize('delete', $equipment);
-
         $equipment->delete();
 
-        return response()->json(['message' => __('equipment.deleted')]);
+        return response()->json([
+            'status' => 'success',
+            'message' => __('equipment.deleted'),
+        ]);
     }
 }

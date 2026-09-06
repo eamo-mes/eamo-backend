@@ -6,7 +6,6 @@ namespace Modules\Equipment\ErrorMonitoring\Actions;
 
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Lorisleiva\Actions\Concerns\AsAction;
 use Modules\Equipment\ErrorMonitoring\Models\OperatingTime;
 use Modules\Masterdata\Equipment\Models\Equipment;
@@ -15,43 +14,47 @@ final class GetMaintenanceStatusChartAction
 {
     use AsAction;
 
-    public function asController(Request $request): JsonResponse
+    /**
+     * Calculate remaining operating hours until next maintenance for active equipment.
+     *
+     * @return array<int, array{name: string, remaining: float}>
+     */
+    public function handle(): array
     {
-        $equipments = Equipment::where('is_active', true)
+        $equipments = Equipment::query()
+            ->where('is_active', true)
             ->whereNotNull('maintenance_interval_hours')
             ->where('maintenance_interval_hours', '>', 0)
-            ->get();
+            ->get(['id', 'code', 'maintenance_interval_hours', 'last_maintenance']);
 
-        $data = [];
+        return $equipments->map(function (Equipment $equipment): array {
+            $lastMaintenanceDate = $equipment->last_maintenance['datetime'] ?? null;
 
-        foreach ($equipments as $equipment) {
-            $limit = $equipment->maintenance_interval_hours ?? 0;
-
-            $lastMaintenance = $equipment->last_maintenance;
-            $lastMaintenanceDate = isset($lastMaintenance['datetime']) ? $lastMaintenance['datetime'] : null;
-
-            $actualOp = OperatingTime::where('equipment_id', $equipment->id)
-                ->when($lastMaintenanceDate, function ($query) use ($lastMaintenanceDate) {
-                    $query->where('start_time', '>=', Carbon::parse($lastMaintenanceDate));
-                })
+            $actualOperatingTime = OperatingTime::query()
+                ->where('equipment_id', $equipment->id)
+                ->when(
+                    $lastMaintenanceDate,
+                    fn ($query) => $query->where('start_time', '>=', Carbon::parse($lastMaintenanceDate))
+                )
                 ->sum('actual_operating_time');
 
-            $remaining = $limit - $actualOp;
+            $remaining = (float) $equipment->maintenance_interval_hours - (float) $actualOperatingTime;
 
-            $data[] = [
+            return [
                 'name' => $equipment->code,
-                'remaining' => round((float) $remaining, 2),
+                'remaining' => round($remaining, 2),
             ];
-        }
+        })
+            ->sortBy('remaining')
+            ->values()
+            ->all();
+    }
 
-        // Sort ascending by remaining so the lowest remaining hours is first
-        usort($data, function ($a, $b) {
-            return $a['remaining'] <=> $b['remaining'];
-        });
-
+    public function asController(): JsonResponse
+    {
         return response()->json([
             'status' => 'success',
-            'data' => $data,
+            'data' => $this->handle(),
         ]);
     }
 }

@@ -8,29 +8,31 @@ use Illuminate\Http\JsonResponse;
 use Lorisleiva\Actions\Concerns\AsAction;
 use Modules\Masterdata\Equipment\Requests\Equipment\DecodeQrRequest;
 use Modules\Masterdata\Equipment\Services\DecodeQrEquipmentService;
+use Modules\Masterdata\Equipment\Models\Equipment;
 
 final class DecodeQrAndGetEquipmentAction
 {
     use AsAction;
 
-    public function asController(
-        DecodeQrRequest $request,
-        DecodeQrEquipmentService $service
-    ): JsonResponse {
-        $file = $request->file('qr_image');
+    public function __construct(
+        private readonly DecodeQrEquipmentService $service
+    ) {}
 
-        // Gọi Service giải mã ảnh và tìm thiết bị
-        $equipment = $service->decodeAndFind($file->getPathname());
+    public function asController(DecodeQrRequest $request): JsonResponse
+    {
+        $file = $request->file('qr_image');
+        $equipment = $this->service->decodeAndFind($file->getPathname());
 
         return response()->json([
+            'status' => 'success',
             'message' => __('equipment.qr_decoded_success'),
             'data' => $equipment->load([
                 'equipmentCategory',
                 'equipmentErrors',
                 'equipmentParameters.unit',
                 'equipmentState',
-                'equipmentImages'
-            ])
+                'equipmentImages',
+            ]),
         ]);
     }
 }
