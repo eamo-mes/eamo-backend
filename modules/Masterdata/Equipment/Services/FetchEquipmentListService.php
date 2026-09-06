@@ -22,7 +22,8 @@ final class FetchEquipmentListService
      */
     public function fetch(array $filters = []): LengthAwarePaginator|Collection
     {
-        $isAll = (bool) ($filters['all'] ?? false);
+        $isAll = (bool) ($filters['all'] ?? false)
+            || (isset($filters['paginate']) && ! filter_var($filters['paginate'], FILTER_VALIDATE_BOOLEAN));
 
         $query = Equipment::query()
             ->with([

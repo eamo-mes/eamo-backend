@@ -14,8 +14,10 @@ final class IndexEquipmentRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $isAll = $this->boolean('all') || ($this->has('paginate') && ! $this->boolean('paginate'));
+
         $this->merge([
-            'all' => $this->boolean('all'),
+            'all' => $isAll,
         ]);
     }
 
